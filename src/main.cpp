@@ -50,14 +50,15 @@ int main() {
     map_waypoints_dx.push_back(d_x);
     map_waypoints_dy.push_back(d_y);
   }
-
-  int lane = 1;          // Initialize initial lane
-  double ref_vel = 49.5; // Set reference velocity (miles/h)
+  char flag = 'k'; // keep stands for keep current lane, l for left-turn, r for
+                   // right-turn.
+  int lane = 1;    // Initialize initial lane  (0, 1, 2).
+  double ref_vel = 0.0; // Set reference velocity (miles/h).
 
   h.onMessage([&ref_vel, &map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
-               &map_waypoints_dx,
-               &map_waypoints_dy, &lane](uWS::WebSocket<uWS::SERVER> ws, char *data,
-                                  size_t length, uWS::OpCode opCode) {
+               &map_waypoints_dx, &map_waypoints_dy, &lane,
+               &flag](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -94,13 +95,135 @@ int main() {
 
           int prev_size = previous_path_x.size();
 
+          double car_current_s = car_s;
+
+          if (prev_size > 0) {
+            car_s = end_path_s; // process not very wise, but still good for
+                                // this projecty
+          }
+
+          bool too_close = false;
+
+          for (int i = 0; i < sensor_fusion.size(); i++) {
+            /**
+             * car's unique ID, car's x position in map coordinates, car's y
+             * position in map coordinates, car's x velocity in m/s, car's y
+             * velocity in m/s, car's s position in frenet coordinates, car's d
+             * position in frenet coordinates
+             */
+            float d = sensor_fusion[i][6];
+            if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2)) {
+              double vx = sensor_fusion[i][3];
+              double vy = sensor_fusion[i][4];
+              double check_speed = sqrt(vx * vx + vy * vy);
+              double check_car_s = sensor_fusion[i][5];
+              double check_car_s_prime =
+                  check_car_s +
+                  ((double)prev_size * .02 *
+                   check_speed); // Perdict where the car will be in the future
+              if ((check_car_s > car_current_s) &&
+                  ((check_car_s_prime - car_s) < 30)) {
+                // Reduce speed.
+                too_close = true;
+              }
+            }
+          }
           /**
-           * TODO: define a path made up of (x,y) points that the car will visit
-           *   sequentially every .02 seconds
+           *  SET UP TOO-CLOSE Strategy
            */
 
-          vector<double> ptsx; // path point_x
-          vector<double> ptsy; // path point_y
+          if (too_close) {
+            ref_vel -= 0.224; // Deal with the sudden deceleration.
+          } else if (ref_vel < 49.5) {
+            ref_vel += 0.224; // Deal with cold start.
+          }
+
+          if (too_close && lane == 1) {
+            // If car on the mid lane, we can switch to the left lane to pass.
+            for (int i = 0; i < sensor_fusion.size(); i++) {
+              float d = sensor_fusion[i][6];
+              if (d < 4 && d > 0) {
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx * vx + vy * vy);
+                double check_car_s = sensor_fusion[i][5];
+                double check_car_s_prime =
+                    check_car_s + ((double)prev_size * .02 *
+                                   check_speed); // Perdict where the car will
+                                                 // be in the future.
+                flag = 'l'; // decide if the car can make left turn.
+                if ((check_car_s < car_current_s) &&
+                    (check_car_s_prime - car_s > 0)) {
+                  flag = 'k';
+                } else if ((check_car_s > car_current_s) &&
+                           (check_car_s_prime - car_s < 30)) {
+                  flag = 'k';
+                } else if ((check_car_s > car_current_s - 30) &&
+                           (check_car_s < car_current_s) &&
+                           check_speed > ref_vel) {
+                  flag = 'k';
+                } else if ((check_car_s > car_current_s - 15) &&
+                           (check_car_s < car_current_s)) {
+                  flag = 'k';
+                }
+              }
+            }
+          } else if (too_close && lane == 0) {
+            // If car on the mid lane, we can switch to the left lane to pass.
+            for (int i = 0; i < sensor_fusion.size(); i++) {
+              float d = sensor_fusion[i][6];
+              if (d < 8 && d > 4) {
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx * vx + vy * vy);
+                double check_car_s = sensor_fusion[i][5];
+                double check_car_s_prime =
+                    check_car_s + ((double)prev_size * .02 *
+                                   check_speed); // Perdict where the car will
+                                                 // be in the future.
+                flag = 'r'; // decide if the car can make left turn.
+                if ((check_car_s < car_current_s) &&
+                    (check_car_s_prime - car_s > 0)) {
+                  flag = 'k';
+                } else if ((check_car_s > car_current_s) &&
+                           (check_car_s_prime - car_s < 30)) {
+                  flag = 'k';
+                } else if ((check_car_s > car_current_s - 30) &&
+                           (check_car_s < car_current_s) &&
+                           check_speed > ref_vel) {
+                  flag = 'k';
+                } else if ((check_car_s > car_current_s - 15) &&
+                           (check_car_s < car_current_s)) {
+                  flag = 'k';
+                }
+              }
+            }
+          }
+
+          /**
+           *  DESIGN LANE CHANGE
+           */
+
+          switch (flag) {
+          case 'l':
+            lane -= 1;
+            flag = 'k';
+            break;
+          case 'r':
+            lane += 1;
+            flag = 'k';
+          default:
+            break;
+          }
+
+          /**
+           *  SET UP THE PATH BELOW
+           */
+
+          vector<double>
+              ptsx; // path point_xs which are used to set up our spline
+          vector<double>
+              ptsy; // path point_ys which are used to set up our spline
 
           double ref_x = car_x;
           double ref_y = car_y;
@@ -196,7 +319,6 @@ int main() {
             x_point += ref_x;
             y_point += ref_y;
 
-            
             next_x_vals.push_back(x_point);
             next_y_vals.push_back(y_point);
           }
