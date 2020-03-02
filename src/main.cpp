@@ -98,13 +98,12 @@ int main() {
           double car_current_s = car_s;
 
           if (prev_size > 0) {
-            car_s = end_path_s; // process not very wise, but still good for
-                                // this projecty
+            car_s = end_path_s; 
           }
 
-          bool too_close = false;
-          bool prepare_for_change = false;
-          bool emergency_stop = false;
+          bool too_close = false;           // Indicate the car is close to the car at the front.
+          bool prepare_for_change = false;  // Indicate the car tends to make a lane merge.
+          bool emergency_stop = false;      // Indicate the car is very close to the car at the front.
 
           for (int i = 0; i < sensor_fusion.size(); i++) {
             /**
@@ -122,44 +121,43 @@ int main() {
               double check_car_s_prime =
                   check_car_s +
                   ((double)prev_size * .02 *
-                   check_speed); // Perdict where the car will be in the future
+                   check_speed); // Perdict where the car will be in the future.
               if ((check_car_s_prime > car_s) &&
                   ((check_car_s_prime - car_s) < 30)) {
-                // Reduce speed.
-                too_close = true;
-                prepare_for_change = true;
+                too_close = true; // Reduce speed.
+                prepare_for_change = true;  // Attempt changing line.  
               } else if ((check_car_s > car_current_s) &&
                          ((check_car_s - car_current_s) < 30)) {
-                // Reduce speed.
-                too_close = true;
-                prepare_for_change = true;
+                too_close = true; // Reduce speed.
+                prepare_for_change = true; // Attempt changing line.
               }
               if ((check_car_s > car_current_s) &&
                   ((check_car_s - car_current_s) < 10)) {
-                // Reduce speed.
-                emergency_stop = true;
+                emergency_stop = true;  // To close, apply hard breaking.
               }
               if ((check_car_s > car_current_s) &&
                   ((check_car_s_prime - car_s) < 60) &&
                   (check_speed < ref_vel - 10)) {
-                // Reduce speed.
-                prepare_for_change = true;
+                prepare_for_change = true;  // Attempt changing line.
               }
             }
           }
+
           /**
            *  SET UP TOO-CLOSE Strategy
            */
-
           if (too_close) {
             ref_vel -= 0.224; // Deal with the sudden deceleration.
-            if (emergency_stop) {
+            if (emergency_stop) { // Deal with emergency situation, apply hard break. 
               ref_vel -= 0.224;
             }
           } else if (ref_vel < 49.5) {
             ref_vel += 0.224; // Deal with cold start.
           }
 
+          /**
+           *  SET UP LINE CHANGE Strategy
+           */
           if (prepare_for_change && lane == 1) {
             // If car on the mid lane, we can switch to the left lane to pass.
             for (int i = 0; i < sensor_fusion.size(); i++) {
@@ -211,7 +209,7 @@ int main() {
                 }
               }
             }
-            if (flag == 'k') {
+            if (flag == 'k') {    // Left turn is impossible, then consider right turn.
               for (int i = 0; i < sensor_fusion.size(); i++) {
                 float d = sensor_fusion[i][6];
                 if (d < 12 && d > 8) {
@@ -263,7 +261,7 @@ int main() {
               }
             }
           } else if (prepare_for_change && lane == 0) {
-            // If car on the mid lane, we can switch to the left lane to pass.
+            // If car on the left lane, we can switch to the right lane to pass.
             for (int i = 0; i < sensor_fusion.size(); i++) {
               float d = sensor_fusion[i][6];
               if (d < 8 && d > 4) {
@@ -314,7 +312,7 @@ int main() {
               }
             }
           } else if (prepare_for_change && lane == 2) {
-            // If car on the mid lane, we can switch to the left lane to pass.
+            // If car on the right lane, we can switch to the left lane to pass.
             for (int i = 0; i < sensor_fusion.size(); i++) {
               float d = sensor_fusion[i][6];
               if (d < 8 && d > 4) {
@@ -369,23 +367,21 @@ int main() {
           /**
            *  DESIGN LANE CHANGE
            */
-
           switch (flag) {
-          case 'l':
+          case 'l':   // Merge into the left lane.
             lane -= 1;
-            flag = 'k';
+            flag = 'k'; // Stay into the left lane.
             break;
-          case 'r':
+          case 'r':   // Merge into the right lane.
             lane += 1;
-            flag = 'k';
+            flag = 'k'; // Stay into the right lane.
           default:
-            break;
+            break;    // Stay at the current lane.
           }
 
           /**
            *  SET UP THE PATH BELOW
            */
-
           vector<double>
               ptsx; // path point_xs which are used to set up our spline
           vector<double>
@@ -443,7 +439,7 @@ int main() {
           ptsy.push_back(next_wp2[1]);
 
           for (int i = 0; i < ptsx.size(); i++) {
-            // Do angle transformation
+            // Do coordinate transformation
             double shift_x = ptsx[i] - ref_x;
             double shift_y = ptsy[i] - ref_y;
             ptsx[i] = (shift_x * cos(ref_yaw) + shift_y * sin(ref_yaw));
