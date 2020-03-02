@@ -103,6 +103,8 @@ int main() {
           }
 
           bool too_close = false;
+          bool prepare_for_change = false;
+          bool emergency_stop = false;
 
           for (int i = 0; i < sensor_fusion.size(); i++) {
             /**
@@ -121,10 +123,27 @@ int main() {
                   check_car_s +
                   ((double)prev_size * .02 *
                    check_speed); // Perdict where the car will be in the future
-              if ((check_car_s > car_current_s) &&
+              if ((check_car_s_prime > car_s) &&
                   ((check_car_s_prime - car_s) < 30)) {
                 // Reduce speed.
                 too_close = true;
+                prepare_for_change = true;
+              } else if ((check_car_s > car_current_s) &&
+                         ((check_car_s - car_current_s) < 30)) {
+                // Reduce speed.
+                too_close = true;
+                prepare_for_change = true;
+              }
+              if ((check_car_s > car_current_s) &&
+                  ((check_car_s - car_current_s) < 10)) {
+                // Reduce speed.
+                emergency_stop = true;
+              }
+              if ((check_car_s > car_current_s) &&
+                  ((check_car_s_prime - car_s) < 60) &&
+                  (check_speed < ref_vel - 10)) {
+                // Reduce speed.
+                prepare_for_change = true;
               }
             }
           }
@@ -134,11 +153,14 @@ int main() {
 
           if (too_close) {
             ref_vel -= 0.224; // Deal with the sudden deceleration.
+            if (emergency_stop) {
+              ref_vel -= 0.224;
+            }
           } else if (ref_vel < 49.5) {
             ref_vel += 0.224; // Deal with cold start.
           }
 
-          if (too_close && lane == 1) {
+          if (prepare_for_change && lane == 1) {
             // If car on the mid lane, we can switch to the left lane to pass.
             for (int i = 0; i < sensor_fusion.size(); i++) {
               float d = sensor_fusion[i][6];
@@ -155,20 +177,92 @@ int main() {
                 if ((check_car_s < car_current_s) &&
                     (check_car_s_prime - car_s > 0)) {
                   flag = 'k';
+                  break;
                 } else if ((check_car_s > car_current_s) &&
-                           (check_car_s_prime - car_s < 30)) {
+                           (check_car_s_prime - car_s < 35)) {
                   flag = 'k';
-                } else if ((check_car_s > car_current_s - 30) &&
-                           (check_car_s < car_current_s) &&
-                           check_speed > ref_vel) {
+                  break;
+                } else if ((check_car_s > car_current_s) &&
+                           (check_car_s < car_current_s + 15)) {
                   flag = 'k';
+                  break;
                 } else if ((check_car_s > car_current_s - 15) &&
                            (check_car_s < car_current_s)) {
                   flag = 'k';
+                  break;
+                } else if ((check_car_s > car_current_s - 35) &&
+                           (check_car_s < car_current_s) &&
+                           (check_speed > ref_vel)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s < car_current_s + 35) &&
+                           (check_car_s > car_current_s) &&
+                           (check_speed < ref_vel)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s_prime > car_s) &&
+                           (check_car_s_prime - car_s <= 35)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s_prime < car_s) &&
+                           (check_car_s_prime >= car_s - 35)) {
+                  flag = 'k';
+                  break;
                 }
               }
             }
-          } else if (too_close && lane == 0) {
+            if (flag == 'k') {
+              for (int i = 0; i < sensor_fusion.size(); i++) {
+                float d = sensor_fusion[i][6];
+                if (d < 12 && d > 8) {
+                  double vx = sensor_fusion[i][3];
+                  double vy = sensor_fusion[i][4];
+                  double check_speed = sqrt(vx * vx + vy * vy);
+                  double check_car_s = sensor_fusion[i][5];
+                  double check_car_s_prime =
+                      check_car_s + ((double)prev_size * .02 *
+                                     check_speed); // Perdict where the car
+                                                   // will be in the future.
+                  flag = 'r'; // decide if the car can make right turn.
+                  if ((check_car_s < car_current_s) &&
+                      (check_car_s_prime - car_s > 0)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s > car_current_s) &&
+                             (check_car_s_prime - car_s < 35)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s > car_current_s) &&
+                             (check_car_s < car_current_s + 15)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s > car_current_s - 15) &&
+                             (check_car_s < car_current_s)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s > car_current_s - 35) &&
+                             (check_car_s < car_current_s) &&
+                             (check_speed > ref_vel)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s < car_current_s + 35) &&
+                             (check_car_s > car_current_s) &&
+                             (check_speed < ref_vel)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s_prime > car_s) &&
+                             (check_car_s_prime - car_s <= 35)) {
+                    flag = 'k';
+                    break;
+                  } else if ((check_car_s_prime < car_s) &&
+                             (check_car_s_prime >= car_s - 35)) {
+                    flag = 'k';
+                    break;
+                  }
+                }
+              }
+            }
+          } else if (prepare_for_change && lane == 0) {
             // If car on the mid lane, we can switch to the left lane to pass.
             for (int i = 0; i < sensor_fusion.size(); i++) {
               float d = sensor_fusion[i][6];
@@ -185,16 +279,88 @@ int main() {
                 if ((check_car_s < car_current_s) &&
                     (check_car_s_prime - car_s > 0)) {
                   flag = 'k';
+                  break;
                 } else if ((check_car_s > car_current_s) &&
-                           (check_car_s_prime - car_s < 30)) {
+                           (check_car_s_prime - car_s < 35)) {
                   flag = 'k';
-                } else if ((check_car_s > car_current_s - 30) &&
-                           (check_car_s < car_current_s) &&
-                           check_speed > ref_vel) {
+                  break;
+                } else if ((check_car_s > car_current_s) &&
+                           (check_car_s < car_current_s + 15)) {
                   flag = 'k';
+                  break;
                 } else if ((check_car_s > car_current_s - 15) &&
                            (check_car_s < car_current_s)) {
                   flag = 'k';
+                  break;
+                } else if ((check_car_s > car_current_s - 35) &&
+                           (check_car_s < car_current_s) &&
+                           (check_speed > ref_vel)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s < car_current_s + 35) &&
+                           (check_car_s > car_current_s) &&
+                           (check_speed < ref_vel)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s_prime > car_s) &&
+                           (check_car_s_prime - car_s <= 35)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s_prime < car_s) &&
+                           (check_car_s_prime >= car_s - 35)) {
+                  flag = 'k';
+                  break;
+                }
+              }
+            }
+          } else if (prepare_for_change && lane == 2) {
+            // If car on the mid lane, we can switch to the left lane to pass.
+            for (int i = 0; i < sensor_fusion.size(); i++) {
+              float d = sensor_fusion[i][6];
+              if (d < 8 && d > 4) {
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx * vx + vy * vy);
+                double check_car_s = sensor_fusion[i][5];
+                double check_car_s_prime =
+                    check_car_s + ((double)prev_size * .02 *
+                                   check_speed); // Perdict where the car will
+                                                 // be in the future.
+                flag = 'l'; // decide if the car can make left turn.
+                if ((check_car_s < car_current_s) &&
+                    (check_car_s_prime - car_s > 0)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s > car_current_s) &&
+                           (check_car_s_prime - car_s < 35)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s > car_current_s) &&
+                           (check_car_s < car_current_s + 15)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s > car_current_s - 15) &&
+                           (check_car_s < car_current_s)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s > car_current_s - 35) &&
+                           (check_car_s < car_current_s) &&
+                           (check_speed > ref_vel)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s < car_current_s + 35) &&
+                           (check_car_s > car_current_s) &&
+                           (check_speed < ref_vel)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s_prime > car_s) &&
+                           (check_car_s_prime - car_s <= 35)) {
+                  flag = 'k';
+                  break;
+                } else if ((check_car_s_prime < car_s) &&
+                           (check_car_s_prime >= car_s - 35)) {
+                  flag = 'k';
+                  break;
                 }
               }
             }
